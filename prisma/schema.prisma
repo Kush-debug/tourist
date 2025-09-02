@@ -1,0 +1,437 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  phone             String?  @unique
+  password          String
+  firstName         String
+  lastName          String
+  dateOfBirth       DateTime?
+  nationality       String?
+  passportNumber    String?  @unique
+  profileImage      String?
+  isVerified        Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  role              UserRole @default(TOURIST)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  touristProfile    TouristProfile?
+  policeProfile     PoliceProfile?
+  adminProfile      AdminProfile?
+  sessions          Session[]
+  emergencyAlerts   EmergencyAlert[]
+  safetyScores      SafetyScore[]
+  blockchainIdentity BlockchainIdentity?
+  payments          Payment[]
+  notifications     Notification[]
+  trustConnections  TrustConnection[] @relation("UserTrustConnections")
+  trustedBy         TrustConnection[] @relation("TrustedByUser")
+
+  @@map("users")
+}
+
+enum UserRole {
+  TOURIST
+  POLICE
+  ADMIN
+  EMERGENCY_RESPONDER
+}
+
+// Tourist Profile
+model TouristProfile {
+  id                    String   @id @default(cuid())
+  userId                String   @unique
+  emergencyContact      String?
+  medicalConditions     String?
+  allergies             String?
+  bloodType             String?
+  insuranceProvider     String?
+  insuranceNumber       String?
+  preferredLanguage     String   @default("English")
+  isPremium             Boolean  @default(false)
+  subscriptionEndDate   DateTime?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  // Relations
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locations             Location[]
+  emergencyAlerts       EmergencyAlert[]
+  safetyScores          SafetyScore[]
+  voiceCommands         VoiceCommand[]
+  anomalyDetections     AnomalyDetection[]
+
+  @@map("tourist_profiles")
+}
+
+// Police Profile
+model PoliceProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  badgeNumber     String   @unique
+  department      String
+  rank            String
+  jurisdiction    String
+  isOnDuty        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emergencyResponses EmergencyResponse[]
+
+  @@map("police_profiles")
+}
+
+// Admin Profile
+model AdminProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  permissions     String[] // JSON array of permissions
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("admin_profiles")
+}
+
+// Session Management
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// Location Tracking
+model Location {
+  id              String   @id @default(cuid())
+  touristId       String
+  latitude        Float
+  longitude       Float
+  accuracy        Float?
+  altitude        Float?
+  speed           Float?
+  heading         Float?
+  address         String?
+  timestamp       DateTime @default(now())
+  isEmergency     Boolean  @default(false)
+
+  // Relations
+  tourist         TouristProfile @relation(fields: [touristId], references: [id], onDelete: Cascade)
+
+  @@map("locations")
+}
+
+// Emergency Alerts
+model EmergencyAlert {
+  id              String           @id @default(cuid())
+  touristId       String
+  userId          String
+  type            EmergencyType
+  severity        EmergencySeverity
+  status          EmergencyStatus  @default(ACTIVE)
+  latitude        Float?
+  longitude       Float?
+  address         String?
+  description     String?
+  responseTime    Int? // in seconds
+  resolvedAt      DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Relations
+  tourist         TouristProfile   @relation(fields: [touristId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  responses       EmergencyResponse[]
+
+  @@map("emergency_alerts")
+}
+
+enum EmergencyType {
+  PANIC_BUTTON
+  VOICE_COMMAND
+  ANOMALY_DETECTION
+  GEOFENCE_VIOLATION
+  MANUAL_REPORT
+  MEDICAL_EMERGENCY
+  CRIME_VICTIM
+  ACCIDENT
+  NATURAL_DISASTER
+}
+
+enum EmergencySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum EmergencyStatus {
+  ACTIVE
+  RESPONDING
+  RESOLVED
+  FALSE_ALARM
+}
+
+// Emergency Response
+model EmergencyResponse {
+  id              String   @id @default(cuid())
+  alertId         String
+  policeId        String
+  status          ResponseStatus @default(EN_ROUTE)
+  estimatedArrival DateTime?
+  actualArrival   DateTime?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  alert           EmergencyAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  police          PoliceProfile  @relation(fields: [policeId], references: [id], onDelete: Cascade)
+
+  @@map("emergency_responses")
+}
+
+enum ResponseStatus {
+  EN_ROUTE
+  ON_SCENE
+  TRANSPORTING
+  COMPLETED
+  CANCELLED
+}
+
+// Safety Scoring
+model SafetyScore {
+  id              String   @id @default(cuid())
+  touristId       String
+  userId          String
+  score           Int      // 0-100
+  factors         Json     // JSON object with scoring factors
+  location        String?
+  timestamp       DateTime @default(now())
+
+  // Relations
+  tourist         TouristProfile @relation(fields: [touristId], references: [id], onDelete: Cascade)
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("safety_scores")
+}
+
+// Voice Commands
+model VoiceCommand {
+  id              String   @id @default(cuid())
+  touristId       String
+  command         String
+  language        String
+  confidence      Float
+  isEmergency     Boolean  @default(false)
+  processedAt     DateTime @default(now())
+
+  // Relations
+  tourist         TouristProfile @relation(fields: [touristId], references: [id], onDelete: Cascade)
+
+  @@map("voice_commands")
+}
+
+// Anomaly Detection
+model AnomalyDetection {
+  id              String   @id @default(cuid())
+  touristId       String
+  type            AnomalyType
+  confidence      Float
+  details         Json
+  isAlerted       Boolean  @default(false)
+  detectedAt      DateTime @default(now())
+
+  // Relations
+  tourist         TouristProfile @relation(fields: [touristId], references: [id], onDelete: Cascade)
+
+  @@map("anomaly_detections")
+}
+
+enum AnomalyType {
+  UNUSUAL_MOVEMENT
+  SUSPICIOUS_ACTIVITY
+  HEALTH_ANOMALY
+  LOCATION_ANOMALY
+  BEHAVIORAL_ANOMALY
+  ENVIRONMENTAL_HAZARD
+}
+
+// Blockchain Identity
+model BlockchainIdentity {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  walletAddress   String   @unique
+  privateKeyHash  String
+  publicKey       String
+  identityHash    String   @unique
+  isVerified      Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("blockchain_identities")
+}
+
+// Trust Network
+model TrustConnection {
+  id              String   @id @default(cuid())
+  fromUserId      String
+  toUserId         String
+  trustLevel       TrustLevel @default(MEDIUM)
+  isVerified       Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  // Relations
+  fromUser        User     @relation("UserTrustConnections", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser          User     @relation("TrustedByUser", fields: [toUserId], references: [id], onDelete: Cascade)
+
+  @@unique([fromUserId, toUserId])
+  @@map("trust_connections")
+}
+
+enum TrustLevel {
+  LOW
+  MEDIUM
+  HIGH
+  VERIFIED
+}
+
+// Payment System
+model Payment {
+  id              String        @id @default(cuid())
+  userId          String
+  amount          Float
+  currency        String        @default("USD")
+  status          PaymentStatus @default(PENDING)
+  type            PaymentType
+  stripePaymentId String?
+  description     String?
+  metadata        Json?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  EMERGENCY_SERVICE
+  PREMIUM_FEATURE
+  DONATION
+}
+
+// Notifications
+model Notification {
+  id              String           @id @default(cuid())
+  userId          String
+  type            NotificationType
+  title           String
+  message         String
+  isRead          Boolean          @default(false)
+  priority        NotificationPriority @default(NORMAL)
+  metadata        Json?
+  sentAt          DateTime         @default(now())
+  readAt          DateTime?
+
+  // Relations
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  EMERGENCY_ALERT
+  SAFETY_UPDATE
+  LOCATION_UPDATE
+  PAYMENT_CONFIRMATION
+  SYSTEM_MAINTENANCE
+  NEW_FEATURE
+  SECURITY_ALERT
+}
+
+enum NotificationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+// Analytics and Reporting
+model Analytics {
+  id              String   @id @default(cuid())
+  metric          String
+  value           Float
+  dimension       String?
+  timestamp       DateTime @default(now())
+  metadata        Json?
+
+  @@map("analytics")
+}
+
+// System Settings
+model SystemSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String
+  description     String?
+  isPublic        Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("system_settings")
+}
+
+// Audit Log
+model AuditLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  action          String
+  resource        String
+  resourceId      String?
+  details         Json?
+  ipAddress       String?
+  userAgent       String?
+  timestamp       DateTime @default(now())
+
+  @@map("audit_logs")
+}
